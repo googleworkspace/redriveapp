@@ -24,7 +24,7 @@ ReDriveApp is intended as a (mostly) drop-in replacement for projects that wish 
 <li>Code is in-place to support Drive v3 in the future, and v3 handling has been implemented for some methods. However v3 support is not yet complete, and has yet to be tested as integration of Drive v3 API was only recently added to the Apps Script Advanced Drive Service.</li>
 
 <li>If your project previously opened files using the full Drive scope (i.e. using DriveApp) that it did not create itself, it will not be able to access those same files simply by replacing occurrences of DriveApp with ReDriveApp. That is because those files were not accessed with the /auth/drive.file scope previously, and so are not already marked in Drive as accessible by your project. Users of your script or app will need to re-select said files that they wish to access via the Drive Picker. If they do not, you will get a "File not Found" error from Drive when trying to access those files by their Drive file ID.</li>
-<ol>
+</ol>
 
 
 ## Use 
