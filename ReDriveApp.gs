@@ -1,13 +1,13 @@
 /*
   ReDriveApp (short for "Recommended" or "Replacement" DriveApp)
-  https://github.com/gleedasoftware/redriveapp
+  https://github.com/googleworkspace/redriveapp
 
   Provides equivalent methods offered by the built-in DriveApp, but that only require use of 
   '/drive.file' Drive OAuth scope (a "Recommended" OAuth scope). Requires use of Apps Script
   Advanced Services (Drive) defined with identifier 'Drive' in your Apps Script manifest file.
 
   Created in light of the new Google OAuth changes that make full '/drive' scope a 'Restricted'
-  scope, which has more requirements for public (non-internal) apps, such as a CASP security 
+  scope, which has more requirements for public (non-internal) apps, such as a CASA security 
   review.
   
   Also replaces built-in, related Apps Script classes with equivalents:
