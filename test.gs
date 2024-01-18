@@ -6,6 +6,10 @@ mapFile = null;
 copy = null;
 destFolder = null;
 
+// Before testing:
+// (1) Temporarily change drive.file scope to drive scope in appscript.json manifest (see comments below for explanation)
+// (2) Update the const variables below: existingGoogleDocId, shareWithAccount
+
 function testReDriveApp() {
 
   // existingGoogleDocId: The drive.file scope only works if target files have first been opened 
