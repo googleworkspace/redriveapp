@@ -7,10 +7,12 @@
   Advanced Services (Drive) defined with identifier 'Drive' in your Apps Script manifest file.
 
   Created in light of the new Google OAuth changes that make full '/drive' scope a 'Restricted'
-  scope, which has more requirements for public (non-internal) apps, such as a CASA security 
-  review.
+  scope for existing apps. Apps which use Restricted scopes have more requirements for public 
+  (non-internal) apps, such as a CASA security review. Further, many apps don't really need
+  the full '/drive' scope, but are forced to request it as a result of using the convenient
+  DriveApp service.
   
-  Also replaces built-in, related Apps Script classes with equivalents:
+  ReDriveApp also replaces built-in, related Apps Script classes with equivalents:
     File             --> ReFile
     Folder           --> ReFolder
     User             --> ReUser
@@ -29,44 +31,65 @@
 
 ////////////////////////////////////////// ReDriveApp //////////////////////////////////////////////
 
-// Global DriveApiVersion_ must be set to 2 or 3 via ReDriveApp.setApiVersion() before anything
-// else can be used. 
-//
-// !! For now only v2 is supported and tested !!
-DriveApiVersion_ = null;
-
 // Static class methods for ReDriveApp
 // noinspection JSUnusedGlobalSymbols, ThisExpressionReferencesGlobalObjectJS
 this['ReDriveApp'] = {
   // Add local alias to run the library as normal code\
-  setApiVersion: setApiVersion,
   createFile: createFile,
   getFileById: getFileById,
   getFolderById: getFolderById,
   createFolder: createFolder,
   getFoldersByName: getFoldersByName,
   getFilesByName: getFilesByName,
+  searchFiles: searchFiles,
+  searchFolders: searchFolders,
+  getRootFolder: getRootFolder,
+  setDriveApiVersion: setDriveApiVersion
 };
 
-function setApiVersion(versionNumber) {
-  if (versionNumber == 2 || versionNumber == 3) {
-    DriveApiVersion_ = versionNumber;
-    return;
+// Global DriveApiVersion_ must be set to 2 or 3 before anything
+// else can be used. 
+// Note: For now only v2 is supported and tested.
+DriveApiVersion_ = undefined; 
+
+DOC_PROP_REDRIVEAPP_DRIVE_API_VERSION = 'DOC_PROP_REDRIVEAPP_DRIVE_API_VERSION';
+DEFAULT_DRIVE_API_VERSION_NUMBER = 2; // 2 is default since 3 wasn't even supported until Dec 2023.
+
+function getDriveApiVersion_() {
+
+  // was version previously set? if so, return it immediately.
+  if (DriveApiVersion_) {
+    return DriveApiVersion_;
   }
 
-  throw new Error('ReDriveApp: Unsupported Drive API version: ' + versionNumber);
+  // not yet set. check if sticky value.
+  var dp = PropertiesService.getDocumentProperties();
+  var stickyVersion = dp.getProperty(DOC_PROP_REDRIVEAPP_DRIVE_API_VERSION);
+  if (stickyVersion) {
+    DriveApiVersion_ = Number(stickyVersion);
+  }
+
+  // not yet set, and no sticky value. use default.
+  else {
+    DriveApiVersion_ = DEFAULT_DRIVE_API_VERSION_NUMBER;
+  }
+
+  return DriveApiVersion_;
 }
 
-function checkDriveApiVersionIsSet_() {
-  if (!DriveApiVersion_) {
-    setApiVersion(2); //  use by default
+function setDriveApiVersion(versionNumber, sticky) {
+  DriveApiVersion_ = versionNumber;
+
+  if (sticky) {
+    var dp = PropertiesService.getDocumentProperties();
+    dp.setProperty(DOC_PROP_REDRIVEAPP_DRIVE_API_VERSION, DriveApiVersion_);
   }
+
 }
 
 function getFileById(fileId) {
-  checkDriveApiVersionIsSet_();
 
-  var driveFilesResource = Drive.Files.get(fileId);
+  var driveFilesResource = Drive.Files.get(fileId, {supportsAllDrives: true});
 
   return new ReFile_.Base({
     driveFilesResource: driveFilesResource, // 'Files' recourse from Drive API
@@ -84,7 +107,6 @@ CREATE_FILE_SIG_NC = 2;
 CREATE_FILE_SIG_NCM = 3;
 
 function createFile(a1, a2, a3) {
-  checkDriveApiVersionIsSet_();
 
   var signature;
   var newFile;
@@ -112,7 +134,7 @@ function createFile(a1, a2, a3) {
 
 function createFileFromBlob_(blob) {
 
-  if (DriveApiVersion_ === 3) {
+  if (getDriveApiVersion_() === 3) {
     throw new Error('createFile() not yet supported by ReDriveApp for Drive API v3')
   } else {
     var newFile = {
@@ -129,7 +151,7 @@ function createFileFromBlob_(blob) {
 }
 
 function createFileFromContentAndMimetype_(name, content, mimeType) {
-  if (DriveApiVersion_ === 3) {
+  if (getDriveApiVersion_() === 3) {
     throw new Error('createFile() not yet supported by ReDriveApp for Drive API v3')
   } else {
     var mimeTypeStr = mimeType.toString(); // convert from Apps Script MimeType enum
@@ -149,29 +171,35 @@ function createFileFromContentAndMimetype_(name, content, mimeType) {
   }
 }
 
-
 function getFolderById(folderId) {
-  checkDriveApiVersionIsSet_();
-
-  var reFile = ReDriveApp.getFileById(folderId);
+ 
+  var reFile = ReDriveApp.getFileById(folderId,  {supportsAllDrives: true});
 
   return new ReFolder_.Base({
     reFile: reFile
   });
 }
 
-function getFilesorFoldersByName_(name, isFolders) {
-  checkDriveApiVersionIsSet_();
+function getFilesOrFoldersByName_(name, isFolders) {
   var queryString;
 
+  // perform proper qutoe escaping of strings passed in query(in this case, file/folder name)
   name = name.replace(/'/g, "\\'");
-  
-  if (DriveApiVersion_ === 2) {
+
+  if (getDriveApiVersion_() === 2) {
     queryString = "title = '" + name + "'";
   } else {
     queryString = "name = '" + name + "'";
   }
 
+  return searchFilesOrFolders_(queryString, isFolders);
+}
+
+// Note on query from Google's Drive API documentation:
+// The params argument is a query string that can contain string values, so take care to escape
+// quotation marks correctly (for example "title contains 'Gulliver\\'s Travels'"
+//  or 'title contains "Gulliver\'s Travels"').
+function searchFilesOrFolders_(queryString, isFolders) {
   if (isFolders) {
     queryString += " and mimeType = 'application/vnd.google-apps.folder'";
   } else {
@@ -182,6 +210,8 @@ function getFilesorFoldersByName_(name, isFolders) {
     corpora: 'default',  // 'user' gives "Invalid Value" error
     //maxResults: 10, // for testing pagination
     q: queryString,
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true
   };
 
   // Note: Due to only having drive.file scope, the following list() call will only
@@ -198,7 +228,7 @@ function getFilesorFoldersByName_(name, isFolders) {
 
   var files;
 
-  if (DriveApiVersion_ === 2) {
+  if (getDriveApiVersion_() === 2) {
     files = results.items;
   } else {
     files = results.files;
@@ -219,20 +249,26 @@ function getFilesorFoldersByName_(name, isFolders) {
   } else {
     return fi;
   }
-  
 }
 
 function getFilesByName(name) {
-  return getFilesorFoldersByName_(name, false);
+  return getFilesOrFoldersByName_(name, false);
 }
 
 function getFoldersByName(name) { 
-  return getFilesorFoldersByName_(name, true);
+  return getFilesOrFoldersByName_(name, true);
+}
+
+function searchFiles(queryString) {
+  return searchFilesOrFolders_(queryString, false);
+}
+
+function searchFolders(queryString) { 
+  return searchFilesOrFolders_(queryString, true);
 }
 
 function createFolder(name) {
-  checkDriveApiVersionIsSet_();
-  if (DriveApiVersion_ === 3) {
+  if (getDriveApiVersion_() === 3) {
     throw new Error('createFolder() not yet supported by ReDriveApp for Drive API v3')
   } else {
     var mimeTypeStr = 'application/vnd.google-apps.folder';
@@ -248,6 +284,10 @@ function createFolder(name) {
       driveFilesResource: driveFilesResource, // 'Files' recourse from Drive API
     });
   }
+}
+
+function getRootFolder() {
+  return ReDriveApp.getFolderById('root');
 }
 
 
@@ -269,7 +309,7 @@ ReFile_.Base = function (base) {
 var reFileBaseClass_ = ReFile_.Base.prototype;
 
 reFileBaseClass_.getName = function getName() {
-  if (DriveApiVersion_ === 2) {
+  if (getDriveApiVersion_() === 2) {
     return this.base.driveFilesResource.title;
   } else {
     return this.base.driveFilesResource.name;
@@ -277,7 +317,7 @@ reFileBaseClass_.getName = function getName() {
 }
 
 reFileBaseClass_.getDateCreated = function getDateCreated() {
-  if (DriveApiVersion_ === 2) {
+  if (getDriveApiVersion_() === 2) {
     return new Date(this.base.driveFilesResource.createdDate);
   } else {
     return new Date(this.base.driveFilesResource.createdTime);
@@ -286,7 +326,7 @@ reFileBaseClass_.getDateCreated = function getDateCreated() {
 
 
 reFileBaseClass_.getLastUpdated = function getLastUpdated() {
-  if (DriveApiVersion_ === 2) {
+  if (getDriveApiVersion_() === 2) {
     return new Date(this.base.driveFilesResource.modifiedDate);
   } else {
     return new Date(this.base.driveFilesResource.modifiedTime);
@@ -294,7 +334,7 @@ reFileBaseClass_.getLastUpdated = function getLastUpdated() {
 }
 
 reFileBaseClass_.getSize = function getSize() {
-  if (DriveApiVersion_ === 2) {
+  if (getDriveApiVersion_() === 2) {
     return this.base.driveFilesResource.fileSize;
   } else {
     return this.base.driveFilesResource.size;
@@ -305,12 +345,17 @@ reFileBaseClass_.getId = function getId() {
   return this.base.driveFilesResource.id;
 }
 
+reFileBaseClass_.getResourceKey = function getResourceKey() {
+  return this.base.driveFilesResource.resourceKey;
+}
+
+
 reFileBaseClass_.getDescription = function getDescription() {
   return this.base.driveFilesResource.description;
 }
 
 reFileBaseClass_.getUrl = function getUrl() {
-  if (DriveApiVersion_ === 2) {
+  if (getDriveApiVersion_() === 2) {
     return this.base.driveFilesResource.alternateLink;
   } else {
     return this.base.driveFilesResource.webViewLink;
@@ -318,11 +363,18 @@ reFileBaseClass_.getUrl = function getUrl() {
 }
 
 reFileBaseClass_.getOwner = function getOwner() {
-  var owner = this.base.driveFilesResource.owners[0];
+
+  var owners = this.base.driveFilesResource.owners;
+
+  if (!owners) {
+    return null; // This is what DriveApp does for file in Shared Drive (no owner)
+  }
+
+  var owner = owners[0];
 
   var photoUrl;
 
-  if (DriveApiVersion_ === 2) {
+  if (getDriveApiVersion_() === 2) {
     photoUrl = owner.picture.url;
   } else {
     photoUrl = owner.photoLink;
@@ -351,7 +403,7 @@ reFileBaseClass_.getAs = function getAs(mimeType) {
     // provided, an exception is thrown. See: http://bit.ly/40r4V0z
 
     var url;
-    if (DriveApiVersion_ === 2) {
+    if (getDriveApiVersion_() === 2) {
       url = 'https://www.googleapis.com/drive/v2/files/'
         + this.base.driveFilesResource.id+"/export?mimeType="+ mimeType;
     } else {
@@ -391,8 +443,6 @@ MAKE_COPY_SIG_NAME_DEST = 4;
 reFileBaseClass_.makeCopy = function makeCopy(a1, a2) {
   var signature;
 
-  var file = ReDriveApp.getFileById(this.getId());
-
   if (a1 === undefined) {
     // non arguments
     signature = MAKE_COPY_SIG_NO_ARGS;
@@ -409,20 +459,20 @@ reFileBaseClass_.makeCopy = function makeCopy(a1, a2) {
 
   // defaults
   var name = this.getName();
-  var parents = this.base.driveFilesResource.parents;
+  var parents = undefined; // = this.base.driveFilesResource.parents;
   
   if (signature === MAKE_COPY_SIG_NAME) {
     name = a1;
   } else if (signature === MAKE_COPY_SIG_DEST) {
     // single argument is of type ReDriveFolder
-    if (DriveApiVersion_ === 2) {
+    if (getDriveApiVersion_() === 2) {
       parents = [{"kind": "drive#parentReference", "id": a1.getId()}];
     } else {
       parents = [a1.getId()];
     }
   } else if (signature === MAKE_COPY_SIG_NAME_DEST) {
     name = a1;
-    if (DriveApiVersion_ === 2) {
+    if (getDriveApiVersion_() === 2) {
       parents = [{"kind": "drive#parentReference", "id": a2.getId()}];
     } else {
       parents = [a2.getId()];
@@ -430,12 +480,23 @@ reFileBaseClass_.makeCopy = function makeCopy(a1, a2) {
   }
 
   var newFile = {
-    title: name,
-    supportsAllDrives	: true,
-    parents: parents
+    title: name
   };
 
-  var copiedFile = Drive.Files.copy(newFile, this.getId());
+  if (parents) {
+    newFile['parents'] = parents;     
+  } 
+  else {
+    var rootFolder = ReDriveApp.getRootFolder();
+    if (getDriveApiVersion_() === 2) {
+      parents = [{"kind": "drive#parentReference", "id": rootFolder.getId()}];
+    } else {
+      parents = [rootFolder.getId()];
+    }
+    newFile['parents'] = parents;
+  }
+
+  var copiedFile = Drive.Files.copy(newFile, this.getId(), {supportsAllDrives: true});
 
   return new ReFile_.Base({
     driveFilesResource: copiedFile, // 'Files' recourse from Drive API
@@ -445,7 +506,7 @@ reFileBaseClass_.makeCopy = function makeCopy(a1, a2) {
 reFileBaseClass_.setName = function setName(name) {
   var options = {};
 
-  if (DriveApiVersion_ === 2) {
+  if (getDriveApiVersion_() === 2) {
     options.title = name;
     this.base.driveFilesResource.title = name;
   } else {
@@ -472,7 +533,7 @@ reFileBaseClass_.setDescription = function setDescription(description) {
 
 reFileBaseClass_.setTrashed = function setTrashed(trashed) {
 
-  if (DriveApiVersion_ === 2) {
+  if (getDriveApiVersion_() === 2) {
     var options = {
       supportsAllDrives: true
     }
@@ -498,6 +559,19 @@ reFileBaseClass_.setTrashed = function setTrashed(trashed) {
 }
 
 
+reFileBaseClass_.isTrashed = function isTrashed() {
+  var trashed = false;
+
+  if (getDriveApiVersion_() === 2) {
+    trashed = this.base.driveFilesResource.labels.trashed;
+  }
+  else {
+    trashed = this.base.driveFilesResource.trashed;
+  }
+
+  return trashed;
+}
+
 reFileBaseClass_.addViewer = function addViewer(emailAddress) {
   
   var resource = {
@@ -506,7 +580,7 @@ reFileBaseClass_.addViewer = function addViewer(emailAddress) {
     role: 'reader'
   };
 
-  if (DriveApiVersion_ === 2) {
+  if (getDriveApiVersion_() === 2) {
     Drive.Permissions.insert(resource, this.base.driveFilesResource.id);
   } else {
     Drive.Permissions.create(resource, this.base.driveFilesResource.id);
@@ -531,7 +605,7 @@ reFileBaseClass_.setSharing = function setSharing(accessType, permissionType) {
   switch (accessType) {
     case DriveApp.Access.ANYONE:
       permissions.type = 'anyone';
-      if (DriveApiVersion_ === 2) {
+      if (getDriveApiVersion_() === 2) {
         permissions.withLink = false;
       } else {
         permissions.allowFileDiscovery = true;
@@ -539,7 +613,7 @@ reFileBaseClass_.setSharing = function setSharing(accessType, permissionType) {
       break;
     case DriveApp.Access.ANYONE_WITH_LINK:
       permissions.type = 'anyone';
-      if (DriveApiVersion_ === 2) {
+      if (getDriveApiVersion_() === 2) {
         permissions.withLink = true;
       } else {
         permissions.allowFileDiscovery = false;
@@ -548,14 +622,14 @@ reFileBaseClass_.setSharing = function setSharing(accessType, permissionType) {
     case DriveApp.Access.DOMAIN:
       permissions.type = 'domain';
       permissions.value = domain;
-      if (DriveApiVersion_ === 2) {
+      if (getDriveApiVersion_() === 2) {
         permissions.withLink = false;
       } else {
         permissions.allowFileDiscovery = true;
       }
       break;
     case DriveApp.Access.DOMAIN_WITH_LINK:
-      if (DriveApiVersion_ === 2) {
+      if (getDriveApiVersion_() === 2) {
         permissions.withLink = true;
       } else {
         permissions.allowFileDiscovery = false;
@@ -577,7 +651,7 @@ reFileBaseClass_.setSharing = function setSharing(accessType, permissionType) {
       permissions.role = 'writer';
       break;
     case DriveApp.Permission.COMMENT:
-      if (DriveApiVersion_ === 2) {
+      if (getDriveApiVersion_() === 2) {
         permissions.role = 'reader';
         permissions.additionalRoles = ['commenter'];
       } else {
@@ -603,7 +677,7 @@ reFileBaseClass_.setSharing = function setSharing(accessType, permissionType) {
 
   }
   
-  if (DriveApiVersion_ === 2) {
+  if (getDriveApiVersion_() === 2) {
     Drive.Permissions.insert(permissions, this.base.driveFilesResource.id);
   } else {
     Drive.Permissions.create(permissions, this.base.driveFilesResource.id);
@@ -612,7 +686,168 @@ reFileBaseClass_.setSharing = function setSharing(accessType, permissionType) {
   return this;
 }
 
+reFileBaseClass_.getAccess = function getAccess(entity, muteInconclusiveException) {
+  var driveAppPermission = DriveApp.Permission.NONE;
+  var entityPermissionRank = 0;
+  var permissions = [];
+  var result;
+  var nextPageToken = undefined;
+  var email = '';
+  var inconclusive = false;
+  var foundDomainMatch = false;
 
+  if (typeof entity === "string") {
+    email = entity;
+  }
+  else {
+    email = entity.getEmail(); // Apps Script User
+  }
+
+  email = email.toLocaleLowerCase();
+  var entityDomain = email.split('@')[1];
+
+  try {
+    do {
+      var options = {supportsAllDrives: true};
+
+      if (nextPageToken)  {
+        options['nextPageToken'] = nextPageToken;
+      }
+      result = Drive.Permissions.list(this.base.driveFilesResource.id, options);
+      nextPageToken = result.nextPageToken;
+      permissions = permissions.concat(result.items);
+
+    } while (nextPageToken)
+
+  } catch (e) {
+    return DriveApp.Permission.NONE;
+  }
+
+  // Iterate through all listed permissions, look for any that apply to this user,
+  // and return the most permissive one (i.e. if user has both 'reader' and 'writer'
+  // permissions due to 2 separate ACLs, return 'writer' (DriveApp.Permission.EDIT))
+  // 
+  // Note: This method cannot check group membership for 'group' type ACLs, so unfortunately
+  // those ACLs are not considered (skipped). 
+  
+  // It can also not check with certainty if a user is in a particular Workspace domain/org 
+  // Drive "Target Audience" for 'domain' type ACLs. It *will* check if the
+  // passed user's email domain matches the domain specified in the URL, and if so
+  // consider that ACL. But otherwise it will skip considering that that ACL.
+  
+  for (var i=0; i < permissions.length; i++) {
+
+   var p = permissions[i];
+
+    if (p.type === 'user') {
+      if (p.hasOwnProperty('emailAddress') && (p.emailAddress.toLocaleLowerCase() === email)) {
+        if (entityPermissionToPermissionRank_(p.role) > entityPermissionRank) {
+          // found a more permissive rank. record it.
+          entityPermissionRank = entityPermissionToPermissionRank_(p.role);
+          driveAppPermission = entityPermissionToDriveAppPermission_(p.role);
+        }
+      }
+    }
+
+    else if (p.type === 'domain') {      
+      // same domain name? note: even w/o domain name match, user could still very well be part
+      // of this Workspace domain/org.
+      if (entityDomain === (p.domain.toLocaleLowerCase())) {
+        foundDomainMatch = true;
+        inconclusive = false; // reset if needed
+
+        if (entityPermissionToPermissionRank_(p.role) > entityPermissionRank) {
+          // found a more permissive rank. record it.
+          entityPermissionRank = entityPermissionToPermissionRank_(p.role);
+          driveAppPermission = entityPermissionToDriveAppPermission_(p.role);
+          continue;
+        }
+      } else {
+        // mark as inconclusive, but only if didn't already match this user to a different domain
+        if (!foundDomainMatch) {
+          inconclusive = true;
+        }
+      }
+    }
+
+    else if (p.type === 'group') {
+      inconclusive = true;
+      continue;
+    }
+
+    else if (p.type === 'anyone') {
+      if (entityPermissionToPermissionRank_(p.role) > entityPermissionRank) {
+        // found a more permissive rank. record it.
+        entityPermissionRank = entityPermissionToPermissionRank_(p.role);
+        driveAppPermission = entityPermissionToDriveAppPermission_(p.role);
+      }
+    }
+  }
+
+  // throw exception if inconclusive check, unless caller asked us not to.
+  if (inconclusive) {
+    if (!muteInconclusiveException) {
+      throw new Error('ReDriveApp: getAccess(): inconclusive access check')
+    }
+  }
+
+  return driveAppPermission;
+}
+
+function entityPermissionToDriveAppPermission_(entityPermission) {
+  var DriveAppPermission = DriveApp.Permission.NONE;
+
+  switch (entityPermission) {
+    case 'reader':
+      DriveAppPermission = DriveApp.Permission.VIEW;
+      break;
+    case 'writer':
+      DriveAppPermission = DriveApp.Permission.EDIT;
+      break;
+    case 'commenter':
+      DriveAppPermission = DriveApp.Permission.COMMENT;
+      break;
+    case 'owner':
+      DriveAppPermission = DriveApp.Permission.OWNER;
+      break;
+    case 'fileOrganizer':
+      DriveAppPermission = DriveApp.Permission.FILE_ORGANIZER;
+      break;
+    case 'organizer':
+      DriveAppPermission = DriveApp.Permission.ORGANIZER;
+      break;
+  }
+
+  return DriveAppPermission;
+}
+
+function entityPermissionToPermissionRank_(entityPermission) {
+  var rank = 0; // NONE
+
+  switch (entityPermission) {
+    case 'reader':
+      rank = 1;
+      break;
+    case 'commenter':
+      rank = 2;
+      break;
+    case 'writer':
+      DriveAppPermission = DriveApp.Permission.EDIT;
+      rank = 3;
+      break;
+    case 'owner':
+      rank = 4;
+      break;
+    case 'fileOrganizer':
+      rank = 5;
+      break;
+    case 'organizer':
+      rank = 6;
+      break;
+  }
+
+  return rank;
+}
 
 function isConvertibleFileType_(mimeType) {
   switch (mimeType) {
@@ -688,7 +923,7 @@ reFileIteratorBaseClass_.next = function next() {
     }
     var files;
 
-    if (DriveApiVersion_ === 2) {
+    if (getDriveApiVersion_() === 2) {
       files = results.items;
     } else {
       files = results.files;
@@ -747,6 +982,10 @@ reFolderBaseClass_.getId = function getId() {
   return this.base.reFile.getId();
 }
 
+reFolderBaseClass_.getResourceKey = function getResourceKey() {
+  return this.base.reFile.getResourceKey();
+}
+
 reFolderBaseClass_.getName = function getName() {
   return this.base.reFile.getName();
 }
@@ -758,6 +997,11 @@ reFolderBaseClass_.setTrashed = function setTrashed(trashed) {
 reFolderBaseClass_.setSharing = function setSharing(accessType, permissionType) {
   return this.base.reFile.setSharing(accessType, permissionType);
 }
+
+reFolderBaseClass_.getAccess = function getAccess(entity) {
+  return this.base.reFile.getAccess(entity);
+}
+
 
 ////////////////////////////////////////// ReUser //////////////////////////////////////////////////
 // Define ReUser class. This is an equivalent to the 'User' class returned by
@@ -784,4 +1028,3 @@ reUserBaseClass_.getPhotoUrl = function getPhotoUrl() {
 reUserBaseClass_.getDomain = function getDomain() {
   return this.base.domain;
 }
-
