@@ -25,8 +25,6 @@ function testReDriveApp() {
   const folderName = "ReDriveApp's Test Folder";
   const dataText = 'test test test';
 
-  ReDriveApp.setApiVersion(2);
-
   try {
     ReDriveApp.getFileById(existingGoogleDocId);
   } catch (e) {
