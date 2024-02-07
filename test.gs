@@ -16,7 +16,7 @@ function testReDriveApp() {
   // by this script via the Drive Picker, which we don'to use here.
   // As a workaround, those testing ReDriveApp should temporarily switching to full /auth/drive 
   // scope in appscript.json for purposes of running this test.
-  const existingGoogleDocId = '<your ocument id>'; // create a new Google Doc and place its ID here.
+  const existingGoogleDocId = '<your google doc id>'; // create a new Google Doc and place its ID here.
 
   // share with account - modify this if you are testing ReDriveApp.
   const shareWithAccount = '<some google account>';
