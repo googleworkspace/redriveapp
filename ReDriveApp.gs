@@ -63,8 +63,12 @@ function getDriveApiVersion_() {
   }
 
   // not yet set. check if sticky value.
-  var dp = PropertiesService.getDocumentProperties();
-  var stickyVersion = dp.getProperty(DOC_PROP_REDRIVEAPP_DRIVE_API_VERSION);
+  var ps = PropertiesService.getDocumentProperties();
+  if (!ps) {
+    // not running in context of Document
+    ps = PropertiesService.getScriptProperties();
+  }
+  var stickyVersion = ps.getProperty(DOC_PROP_REDRIVEAPP_DRIVE_API_VERSION);
   if (stickyVersion) {
     DriveApiVersion_ = Number(stickyVersion);
   }
@@ -81,8 +85,13 @@ function setDriveApiVersion(versionNumber, sticky) {
   DriveApiVersion_ = versionNumber;
 
   if (sticky) {
-    var dp = PropertiesService.getDocumentProperties();
-    dp.setProperty(DOC_PROP_REDRIVEAPP_DRIVE_API_VERSION, DriveApiVersion_);
+    var ps = PropertiesService.getDocumentProperties();
+    if (!ps) {
+    // not running in context of Document
+    ps = PropertiesService.getScriptProperties();
+   }
+
+    ps.setProperty(DOC_PROP_REDRIVEAPP_DRIVE_API_VERSION, DriveApiVersion_);
   }
 
 }
