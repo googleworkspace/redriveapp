@@ -5,7 +5,7 @@
 ## Summary
 ReDriveApp (short for "Recommended" or "Replacement" DriveApp)
 
-Sample code that provides equivalent methods offered by the built-in DriveApp, but that does not require use of full '/drive' OAuth scope (which is a "Restricted" scope"). Instead, uses only these Recommended (non-sensitive) and/or Sensitive scopes:
+Apps Script class that provides equivalent methods offered by the built-in DriveApp, but that does not require use of full '/drive' OAuth scope (which is a "Restricted" scope"). Instead, uses only these Recommended (non-sensitive) and/or Sensitive scopes:
 <ul>
   <li>/auth/drive.file (Recommended / Non-Sensitive)</li>
   <li>/auth/userinfo.email (Non-Sensitive)</li>
