@@ -512,6 +512,74 @@ reFileBaseClass_.makeCopy = function makeCopy(a1, a2) {
   });
 }
 
+MOVE_SIG_NO_ARGS = 1;
+MOVE_SIG_DEST = 2;
+MOVE_SIG_NAME = 3;
+MOVE_SIG_NAME_DEST = 4;
+
+reFileBaseClass_.moveTo = function moveTo(a1, a2) {
+  var signature;
+
+  if (a1 === undefined) {
+    // non arguments
+    signature = MOVE_SIG_NO_ARGS;
+  } else if (a2 === undefined) {
+    // 1 argumemt
+    if (typeof a1 === 'string') {
+      signature = MOVE_SIG_NAME;
+    } else {
+      signature = MOVE_SIG_DEST; // Folder
+    }
+  } else {
+    signature = MOVE_SIG_NAME_DEST;
+  }
+
+  // defaults
+  var name = this.getName();
+  var parents = undefined; // = this.base.driveFilesResource.parents;
+  
+  if (signature === MOVE_SIG_NAME) {
+    name = a1;
+  } else if (signature === MOVE_SIG_DEST) {
+    // single argument is of type ReDriveFolder
+    if (getDriveApiVersion_() === 2) {
+      parents = [{"kind": "drive#parentReference", "id": a1.getId()}];
+    } else {
+      parents = [a1.getId()];
+    }
+  } else if (signature === MOVE_SIG_NAME_DEST) {
+    name = a1;
+    if (getDriveApiVersion_() === 2) {
+      parents = [{"kind": "drive#parentReference", "id": a2.getId()}];
+    } else {
+      parents = [a2.getId()];
+    }
+  }
+
+  var newFile = {
+    title: name
+  };
+
+  if (parents) {
+    newFile['parents'] = parents;     
+  } 
+  else {
+    var rootFolder = ReDriveApp.getRootFolder();
+    if (getDriveApiVersion_() === 2) {
+      parents = [{"kind": "drive#parentReference", "id": rootFolder.getId()}];
+    } else {
+      parents = [rootFolder.getId()];
+    }
+    newFile['parents'] = parents;
+  }
+
+  var movedFile = Drive.Files.patch(newFile, this.getId(), {supportsAllDrives: true});
+
+  return new ReFile_.Base({
+    driveFilesResource: movedFile, // 'Files' recourse from Drive API
+  });
+}
+
 reFileBaseClass_.setName = function setName(name) {
   var options = {};
 
