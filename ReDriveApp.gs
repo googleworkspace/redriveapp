@@ -43,7 +43,6 @@ this['ReDriveApp'] = {
   getFilesByName: getFilesByName,
   searchFiles: searchFiles,
   searchFolders: searchFolders,
-  getRootFolder: getRootFolder,
   setDriveApiVersion: setDriveApiVersion
 };
 
@@ -295,9 +294,12 @@ function createFolder(name) {
   }
 }
 
+/*
+// note: Removing as I learned this call only works if have the full /drive scope.
 function getRootFolder() {
-  return ReDriveApp.getFolderById('root');
-}
+  return ReDriveApp.getFolderById('root'); 
+} 
+*/
 
 
 ////////////////////////////////////////// ReFile //////////////////////////////////////////////////
@@ -496,11 +498,10 @@ reFileBaseClass_.makeCopy = function makeCopy(a1, a2) {
     newFile['parents'] = parents;     
   } 
   else {
-    var rootFolder = ReDriveApp.getRootFolder();
-    if (getDriveApiVersion_() === 2) {
-      parents = [{"kind": "drive#parentReference", "id": rootFolder.getId()}];
+    if (getDriveApiVersion_ === 2) {
+      parents = [{"kind": "drive#parentReference", "id": "root"}];
     } else {
-      parents = [rootFolder.getId()];
+      parents = ["root"];
     }
     newFile['parents'] = parents;
   }
@@ -564,11 +565,10 @@ reFileBaseClass_.moveTo = function moveTo(a1, a2) {
     newFile['parents'] = parents;     
   } 
   else {
-    var rootFolder = ReDriveApp.getRootFolder();
     if (getDriveApiVersion_() === 2) {
-      parents = [{"kind": "drive#parentReference", "id": rootFolder.getId()}];
+      parents = [{"kind": "drive#parentReference", "id": "root"}];
     } else {
-      parents = [rootFolder.getId()];
+      parents = ["root"];
     }
     newFile['parents'] = parents;
   }
