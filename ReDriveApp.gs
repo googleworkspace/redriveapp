@@ -188,7 +188,7 @@ function getFolderById(folderId) {
   });
 }
 
-function getFilesOrFoldersByName_(name, isFolders) {
+function getFilesOrFoldersByName_(name, isFolders, optParentId) {
   var queryString;
 
   // perform proper qutoe escaping of strings passed in query(in this case, file/folder name)
@@ -200,18 +200,23 @@ function getFilesOrFoldersByName_(name, isFolders) {
     queryString = "name = '" + name + "'";
   }
 
-  return searchFilesOrFolders_(queryString, isFolders);
+  return searchFilesOrFolders_(queryString, isFolders, optParentId);
 }
 
 // Note on query from Google's Drive API documentation:
 // The params argument is a query string that can contain string values, so take care to escape
 // quotation marks correctly (for example "title contains 'Gulliver\\'s Travels'"
 //  or 'title contains "Gulliver\'s Travels"').
-function searchFilesOrFolders_(queryString, isFolders) {
+function searchFilesOrFolders_(queryString, isFolders, optParentId) {
   if (isFolders) {
     queryString += " and mimeType = 'application/vnd.google-apps.folder'";
   } else {
     queryString += " and not mimeType = 'application/vnd.google-apps.folder'";
+  }
+
+  // for saerching within a folder
+  if (optParentId) {
+    queryString += " and parents in '" + optParentId + "'";
   }
 
   var options = {
@@ -288,8 +293,12 @@ function createFolder(name) {
 
     var driveFilesResource = Drive.Files.insert(newFolder);
 
-    return new ReFile_.Base({
-      driveFilesResource: driveFilesResource, // 'Files' recourse from Drive API
+    var reFile = new ReFile_.Base({
+      driveFilesResource: driveFilesResource, // 'Files' resource from Drive API
+    });
+
+    return new ReFolder_.Base({
+      reFile: reFile
     });
   }
 }
@@ -513,67 +522,20 @@ reFileBaseClass_.makeCopy = function makeCopy(a1, a2) {
   });
 }
 
-MOVE_SIG_NO_ARGS = 1;
-MOVE_SIG_DEST = 2;
-MOVE_SIG_NAME = 3;
-MOVE_SIG_NAME_DEST = 4;
-
-reFileBaseClass_.moveTo = function moveTo(a1, a2) {
-  var signature;
-
-  if (a1 === undefined) {
-    // non arguments
-    signature = MOVE_SIG_NO_ARGS;
-  } else if (a2 === undefined) {
-    // 1 argumemt
-    if (typeof a1 === 'string') {
-      signature = MOVE_SIG_NAME;
-    } else {
-      signature = MOVE_SIG_DEST; // Folder
-    }
-  } else {
-    signature = MOVE_SIG_NAME_DEST;
-  }
-
-  // defaults
-  var name = this.getName();
+reFileBaseClass_.moveTo = function moveTo(destFolder) {
   var parents = undefined; // = this.base.driveFilesResource.parents;
-  
-  if (signature === MOVE_SIG_NAME) {
-    name = a1;
-  } else if (signature === MOVE_SIG_DEST) {
-    // single argument is of type ReDriveFolder
-    if (getDriveApiVersion_() === 2) {
-      parents = [{"kind": "drive#parentReference", "id": a1.getId()}];
-    } else {
-      parents = [a1.getId()];
-    }
-  } else if (signature === MOVE_SIG_NAME_DEST) {
-    name = a1;
-    if (getDriveApiVersion_() === 2) {
-      parents = [{"kind": "drive#parentReference", "id": a2.getId()}];
-    } else {
-      parents = [a2.getId()];
-    }
+    
+  if (getDriveApiVersion_() === 2) {
+    parents = [{"kind": "drive#parentReference", "id": destFolder.getId()}];
+  } else {
+    parents = [destFolder.getId()];
   }
-
-  var newFile = {
-    title: name
+  
+  var fileOpts = {
+    parents: parents
   };
 
-  if (parents) {
-    newFile['parents'] = parents;     
-  } 
-  else {
-    if (getDriveApiVersion_() === 2) {
-      parents = [{"kind": "drive#parentReference", "id": "root"}];
-    } else {
-      parents = ["root"];
-    }
-    newFile['parents'] = parents;
-  }
-
-  var movedFile = Drive.Files.patch(newFile, this.getId(), {supportsAllDrives: true});
+  var movedFile = Drive.Files.patch(fileOpts, this.getId(), {supportsAllDrives: true});
 
   return new ReFile_.Base({
     driveFilesResource: movedFile, // 'Files' recourse from Drive API
@@ -1011,7 +973,7 @@ reFileIteratorBaseClass_.next = function next() {
     this.base.filesIndex = 1;
 
     var file = new ReFile_.Base({
-      driveFilesResource:  this.base.files[0] // 'Files' recourse from Drive API
+      driveFilesResource:  this.base.files[0] // 'Files' resource from Drive API
     });
 
     return file;
@@ -1040,7 +1002,11 @@ reFolderIteratorBaseClass_.hasNext = function hasNext() {
 }
 
 reFolderIteratorBaseClass_.next = function next() {
-  return this.base.fileIterator.next();
+  var nextReFile = this.base.fileIterator.next();
+
+  return new ReFolder_.Base({
+    reFile: nextReFile
+  });
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1079,6 +1045,25 @@ reFolderBaseClass_.getAccess = function getAccess(entity) {
   return this.base.reFile.getAccess(entity);
 }
 
+reFolderBaseClass_.moveTo = function moveTo(destFolder) {
+  return this.base.reFile.moveTo(destFolder);
+}
+
+reFolderBaseClass_.getFilesByName = function getFilesByName(name) {
+  return getFilesOrFoldersByName_(name, false, this.getId());
+}
+
+reFolderBaseClass_.getFoldersByName = function getFoldersByName(name) {
+  return getFilesOrFoldersByName_(name, true, this.getId());
+}
+
+reFolderBaseClass_.searchFiles = function searchFiles(params) {
+  return searchFilesOrFolders_(params, false, this.getId());
+}
+
+reFolderBaseClass_.searchFolders = function searchFolders(params) {
+  return searchFilesOrFolders_(params, true, this.getId());
+}
 
 ////////////////////////////////////////// ReUser //////////////////////////////////////////////////
 // Define ReUser class. This is an equivalent to the 'User' class returned by
