@@ -281,30 +281,34 @@ function searchFolders(queryString) {
 }
 
 function createFolder(name, optionalParentId) {
- if (DriveApiVersion_ === 3) {
-   throw new Error('createFolder() not yet supported by ReDriveApp for Drive API v3')
- } else {
-   var mimeTypeStr = 'application/vnd.google-apps.folder';
+  if (getDriveApiVersion_() === 3) {
+    throw new Error('createFolder() not yet supported by ReDriveApp for Drive API v3')
+  } else {
+    var mimeTypeStr = 'application/vnd.google-apps.folder';
 
-   var newFolder = {
-     title: name,
-     mimeType: mimeTypeStr,
-   };
+    var newFolder = {
+      title: name,
+      mimeType: mimeTypeStr
+    };
 
-   if (optionalParentId) {
-     newFolder.parents = [{'kind': 'drive#parentReference', 'id': optionalParentId}];
-   }
+    if (optionalParentId) {
+      newFolder.parents = [{'kind': 'drive#parentReference', 'id': optionalParentId}];
+    }
 
-   var options = {
-     supportsAllDrives: true
-   };
+    var options = {
+      supportsAllDrives: true
+    };
 
-   var driveFilesResource = Drive.Files.insert(newFolder, null, options);
+    var driveFilesResource = Drive.Files.insert(newFolder, null, options);
 
-   return new ReFile_.Base({
-     driveFilesResource: driveFilesResource, // 'Files' recourse from Drive API
-   });
- }
+    var reFile = new ReFile_.Base({
+      driveFilesResource: driveFilesResource, // 'Files' resource from Drive API
+    });
+
+    return new ReFolder_.Base({
+      reFile: reFile
+    });
+  }
 }
 
 /*
